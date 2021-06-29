@@ -1,0 +1,8 @@
+[target.xtensa-esp32-none-elf] # esp32
+rustflags = [
+  "-C", "link-arg=-Wl,-Tlink.x",
+  "-C", "link-arg=-nostartfiles",
+]
+
+[build]
+target = "xtensa-esp32-none-elf" # esp32

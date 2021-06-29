@@ -1,0 +1,17 @@
+[package]
+name = "basic-esp32-scaffold"
+version = "0.1.0"
+authors = ["kiyoshigawa <tim@twa.ninja>"]
+edition = "2018"
+
+[dependencies]
+xtensa-lx-rt = "0.5.0"
+xtensa-lx = "0.3.0"
+panic-halt = "0.2.0"
+
+
+# because we cant have optional dev-deps, these must go here
+esp32-hal = { version = "0.2.0", optional = true }
+
+[features]
+required-features = ["xtensa-lx-rt/lx6", "xtensa-lx/lx6", "esp32-hal"]
