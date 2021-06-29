@@ -15,16 +15,16 @@ const CORE_HZ: u32 = 80_000_000;
 const CORE_PERIOD_NS:f32 = 12.5;
 
 //Timing values for our 800kHz WS2811 Strips in nanoseconds:
-const WS2811_HIGH_ON_TIME_NS: u32 = 400;
-const WS2811_HIGH_OFF_TIME_NS: u32 = 850;
-const WS2811_LOW_ON_TIME_NS: u32 = 800;
-const WS2811_LOW_OFF_TIME_NS: u32 = 450;
+const WS2811_0H_TIME_NS: u32 = 500;
+const WS2811_0L_TIME_NS: u32 = 2000;
+const WS2811_1H_TIME_NS: u32 = 1200;
+const WS2811_1L_TIME_NS: u32 = 1300;
 
 //Timing Values converted to equivalent clock cycle values:
-const WS2811_HIGH_ON_TIME_CLOCKS: u32 = (WS2811_HIGH_ON_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
-const WS2811_HIGH_OFF_TIME_CLOCKS: u32 = (WS2811_HIGH_OFF_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
-const WS2811_LOW_ON_TIME_CLOCKS: u32 = (WS2811_LOW_ON_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
-const WS2811_LOW_OFF_TIME_CLOCKS: u32 = (WS2811_LOW_OFF_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
+const WS2811_0H_TIME_CLOCKS: u32 = (WS2811_0H_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
+const WS2811_0L_TIME_CLOCKS: u32 = (WS2811_0L_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
+const WS2811_1H_TIME_CLOCKS: u32 = (WS2811_1H_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
+const WS2811_1L_TIME_CLOCKS: u32 = (WS2811_1L_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
 
 //a color correction table for LEDs to make them look like the color you expect:
 const GAMMA8: [u8; 256] = [
@@ -89,11 +89,11 @@ fn main() -> ! {
 			window_led_control_pin.set_high().unwrap();
 			door_led_control_pin.set_high().unwrap();
 			closet_led_control_pin.set_high().unwrap();
-			delay(WS2811_HIGH_ON_TIME_CLOCKS);
+			delay(WS2811_0H_TIME_CLOCKS);
 			window_led_control_pin.set_low().unwrap();
 			door_led_control_pin.set_low().unwrap();
 			closet_led_control_pin.set_low().unwrap();
-			delay(WS2811_HIGH_OFF_TIME_CLOCKS);
+			delay(WS2811_0L_TIME_CLOCKS);
 		}
 		delay(CORE_HZ);
 	}
