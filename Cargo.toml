@@ -1,5 +1,5 @@
 [package]
-name = "basic-esp32-scaffold"
+name = "esp32_ws2811"
 version = "0.1.0"
 authors = ["kiyoshigawa <tim@twa.ninja>"]
 edition = "2018"
