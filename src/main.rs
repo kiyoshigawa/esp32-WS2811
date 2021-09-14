@@ -60,6 +60,7 @@ const WINDOW_STRIP_FIRST_LED_INDEX: u8 = 0;
 const DOOR_STRIP_FIRST_LED_INDEX: u8 = WINDOW_STRIP_FIRST_LED_INDEX + NUM_LEDS_WINDOW_STRIP;
 const CLOSET_STRIP_FIRST_LED_INDEX: u8 = DOOR_STRIP_FIRST_LED_INDEX + NUM_LEDS_DOOR_STRIP;
 const NUM_LEDS: u8 = CLOSET_STRIP_FIRST_LED_INDEX + NUM_LEDS_CLOSET_STRIP;
+// const NUM_LEDS: u8 = 3*3;
 
 
 /// GPIO output enable reg
@@ -84,7 +85,7 @@ struct Color {
 	b: u8,
 }
 
-fn delay_with_start(start_clocks: u32, clocks_to_delay: u32) {
+fn delay_from_start(start_clocks: u32, clocks_to_delay: u32) {
 	let target = start_clocks + clocks_to_delay;
 	loop {
 		if get_cycle_count() > target {
@@ -116,17 +117,24 @@ fn main() -> ! {
 	let mut door_led_control_pin = pins.gpio25.into_push_pull_output();
 	let mut closet_led_control_pin = pins.gpio33.into_push_pull_output();
 
+	const DELAY_OVERHEAD_CLOCKS: u32 = 11;
+	const SINGLE_OUTPUT_SET_OVERHEAD: u32 = 4;
+	const NUM_OUTPUTS: u32 = 3;
+
 	loop {
 		let start_time = get_cycle_count();
-		for idx in 0..(NUM_LEDS as u32 * 8) {
+		for idx in 0..(NUM_LEDS as u32 * 8 * 3) {
 			window_led_control_pin.set_high();
 			door_led_control_pin.set_high();
 			closet_led_control_pin.set_high();
-			delay_with_start(start_time, WS2811_0H_TIME_CLOCKS+(idx*200));
+			// let current_loop_delay = WS2811_0H_TIME_CLOCKS;
+			let current_loop_delay = WS2811_0H_TIME_CLOCKS - DELAY_OVERHEAD_CLOCKS - (SINGLE_OUTPUT_SET_OVERHEAD * NUM_OUTPUTS);
+			delay(current_loop_delay);
 			window_led_control_pin.set_low();
 			door_led_control_pin.set_low();
 			closet_led_control_pin.set_low();
-			delay_with_start(start_time, WS2811_0L_TIME_CLOCKS+(idx*200));
+			// delay_with_start(start_time, WS2811_0L_TIME_CLOCKS+(idx*200));
+			delay_from_start(start_time, (idx + 1) * 200);
 		}
 		delay(CORE_HZ);
 	}
