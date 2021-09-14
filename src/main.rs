@@ -7,6 +7,10 @@ use xtensa_lx::timer::{delay, get_cycle_count};
 use panic_halt as _;
 use esp32_hal as hal;
 
+//readability consts:
+const HIGH: bool = true;
+const LOW: bool = false;
+
 /// The default clock source is the onboard crystal
 /// In most cases 40mhz (but can be as low as 2mhz depending on the board)
 /// The ESP WROOM 32 I was testing with seems to run at 80MHz
@@ -60,7 +64,11 @@ const WINDOW_STRIP_FIRST_LED_INDEX: u8 = 0;
 const DOOR_STRIP_FIRST_LED_INDEX: u8 = WINDOW_STRIP_FIRST_LED_INDEX + NUM_LEDS_WINDOW_STRIP;
 const CLOSET_STRIP_FIRST_LED_INDEX: u8 = DOOR_STRIP_FIRST_LED_INDEX + NUM_LEDS_DOOR_STRIP;
 const NUM_LEDS: u8 = CLOSET_STRIP_FIRST_LED_INDEX + NUM_LEDS_CLOSET_STRIP;
-// const NUM_LEDS: u8 = 3*3;
+
+const DELAY_OVERHEAD_CLOCKS: u32 = 12;
+const SINGLE_OUTPUT_SET_OVERHEAD: u32 = 4;
+const NUM_OUTPUTS: u32 = 3;
+const LED_FULL_CYCLE_TIME: u32 = 200;
 
 
 /// GPIO output enable reg
@@ -94,21 +102,28 @@ fn delay_from_start(start_clocks: u32, clocks_to_delay: u32) {
 	}
 }
 
+// fn send_bit(state: bool, start_time: u32, idx: u32) {
+// 	window_led_control_pin.set_high();
+// 	door_led_control_pin.set_high();
+// 	closet_led_control_pin.set_high();
+// 	let high_time = if state == HIGH {WS2811_1H_TIME_CLOCKS} else {WS2811_0H_TIME_CLOCKS};
+// 	let current_loop_delay = high_time - DELAY_OVERHEAD_CLOCKS - (SINGLE_OUTPUT_SET_OVERHEAD * NUM_OUTPUTS);
+// 	delay(current_loop_delay);
+// 	window_led_control_pin.set_low();
+// 	door_led_control_pin.set_low();
+// 	closet_led_control_pin.set_low();
+// 	delay_from_start(start_time, (idx + 1) * LED_FULL_CYCLE_TIME);
+// }
+
 #[entry]
 fn main() -> ! {
 
-	// //an array that stores the current color of all LEDs:
-	// let mut led_colors: [Color; NUM_LEDS as usize] = [Color {
-	// 	r: 255,
-	// 	g: 127,
-	// 	b: 0,
-	// }; NUM_LEDS as usize];
-
-	// unsafe {
-	// 	core::ptr::write_volatile(GPIO_ENABLE_W1TS_REG as *mut _, 0x1 << BLINKY_GPIO);
-	// 	core::ptr::write_volatile(GPIO_FUNCX_OUT_SEL_CFG as *mut _, 0x1 << 0x100);
-	// }
-
+	//an array that stores the current color of all LEDs:
+	let mut led_colors: [Color; NUM_LEDS as usize] = [Color {
+		r: 255,
+		g: 127,
+		b: 0,
+	}; NUM_LEDS as usize];
 
 	let device_peripherals = target::Peripherals::take().expect("Failed to obtain Peripherals");
 
@@ -117,24 +132,20 @@ fn main() -> ! {
 	let mut door_led_control_pin = pins.gpio25.into_push_pull_output();
 	let mut closet_led_control_pin = pins.gpio33.into_push_pull_output();
 
-	const DELAY_OVERHEAD_CLOCKS: u32 = 11;
-	const SINGLE_OUTPUT_SET_OVERHEAD: u32 = 4;
-	const NUM_OUTPUTS: u32 = 3;
-
 	loop {
 		let start_time = get_cycle_count();
 		for idx in 0..(NUM_LEDS as u32 * 8 * 3) {
 			window_led_control_pin.set_high();
 			door_led_control_pin.set_high();
 			closet_led_control_pin.set_high();
-			// let current_loop_delay = WS2811_0H_TIME_CLOCKS;
-			let current_loop_delay = WS2811_0H_TIME_CLOCKS - DELAY_OVERHEAD_CLOCKS - (SINGLE_OUTPUT_SET_OVERHEAD * NUM_OUTPUTS);
+			// let high_time = if state == HIGH {WS2811_1H_TIME_CLOCKS} else {WS2811_0H_TIME_CLOCKS};
+			let high_time = WS2811_1H_TIME_CLOCKS;
+			let current_loop_delay = high_time - DELAY_OVERHEAD_CLOCKS - (SINGLE_OUTPUT_SET_OVERHEAD * NUM_OUTPUTS);
 			delay(current_loop_delay);
 			window_led_control_pin.set_low();
 			door_led_control_pin.set_low();
 			closet_led_control_pin.set_low();
-			// delay_with_start(start_time, WS2811_0L_TIME_CLOCKS+(idx*200));
-			delay_from_start(start_time, (idx + 1) * 200);
+			delay_from_start(start_time, (idx + 1) * LED_FULL_CYCLE_TIME);
 		}
 		delay(CORE_HZ);
 	}
