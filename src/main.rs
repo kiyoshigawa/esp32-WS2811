@@ -3,7 +3,7 @@
 
 use esp32_hal::target;
 use hal::prelude::*;
-use xtensa_lx::timer::delay;
+use xtensa_lx::timer::{delay, get_cycle_count};
 use panic_halt as _;
 use esp32_hal as hal;
 
@@ -15,6 +15,7 @@ const CORE_HZ: u32 = 80_000_000;
 const CORE_PERIOD_NS:f32 = 12.5;
 
 //Timing values for our 800kHz WS2811 Strips in nanoseconds:
+//TODO: Figure out timing shit.
 const WS2811_0H_TIME_NS: u32 = 500;
 const WS2811_0L_TIME_NS: u32 = 2000;
 const WS2811_1H_TIME_NS: u32 = 1200;
@@ -60,6 +61,22 @@ const DOOR_STRIP_FIRST_LED_INDEX: u8 = WINDOW_STRIP_FIRST_LED_INDEX + NUM_LEDS_W
 const CLOSET_STRIP_FIRST_LED_INDEX: u8 = DOOR_STRIP_FIRST_LED_INDEX + NUM_LEDS_DOOR_STRIP;
 const NUM_LEDS: u8 = CLOSET_STRIP_FIRST_LED_INDEX + NUM_LEDS_CLOSET_STRIP;
 
+
+/// GPIO output enable reg
+const GPIO_ENABLE_W1TS_REG: u32 = 0x3FF44024;
+
+/// GPIO output set register
+const GPIO_OUT_W1TS_REG: u32 = 0x3FF44008;
+/// GPIO output clear register
+const GPIO_OUT_W1TC_REG : u32 = 0x3FF4400C;
+
+/// The GPIO hooked up to the onboard LED
+const BLINKY_GPIO: u32 = 23;
+
+/// GPIO function mode
+const GPIO_FUNCX_OUT_BASE: u32 = 0x3FF44530;
+const GPIO_FUNCX_OUT_SEL_CFG: u32 = GPIO_FUNCX_OUT_BASE + (BLINKY_GPIO * 4);
+
 #[derive(Copy, Clone)]
 struct Color {
 	r: u8,
@@ -67,33 +84,49 @@ struct Color {
 	b: u8,
 }
 
+fn delay_with_start(start_clocks: u32, clocks_to_delay: u32) {
+	let target = start_clocks + clocks_to_delay;
+	loop {
+		if get_cycle_count() > target {
+			break;
+		}
+	}
+}
+
 #[entry]
 fn main() -> ! {
 
-	//an array that stores the current color of all LEDs:
-	let mut led_colors: [Color; NUM_LEDS as usize] = [Color {
-		r: 255,
-		g: 127,
-		b: 0,
-	}; NUM_LEDS as usize];
+	// //an array that stores the current color of all LEDs:
+	// let mut led_colors: [Color; NUM_LEDS as usize] = [Color {
+	// 	r: 255,
+	// 	g: 127,
+	// 	b: 0,
+	// }; NUM_LEDS as usize];
+
+	// unsafe {
+	// 	core::ptr::write_volatile(GPIO_ENABLE_W1TS_REG as *mut _, 0x1 << BLINKY_GPIO);
+	// 	core::ptr::write_volatile(GPIO_FUNCX_OUT_SEL_CFG as *mut _, 0x1 << 0x100);
+	// }
+
 
 	let device_peripherals = target::Peripherals::take().expect("Failed to obtain Peripherals");
 
 	let pins = device_peripherals.GPIO.split();
-	let mut window_led_control_pin = pins.gpio13.into_push_pull_output();
+	let mut window_led_control_pin = pins.gpio23.into_push_pull_output();
 	let mut door_led_control_pin = pins.gpio25.into_push_pull_output();
 	let mut closet_led_control_pin = pins.gpio33.into_push_pull_output();
 
 	loop {
-		for _ in 0..(NUM_LEDS as u32 * 8) {
-			window_led_control_pin.set_high().unwrap();
-			door_led_control_pin.set_high().unwrap();
-			closet_led_control_pin.set_high().unwrap();
-			delay(WS2811_0H_TIME_CLOCKS);
-			window_led_control_pin.set_low().unwrap();
-			door_led_control_pin.set_low().unwrap();
-			closet_led_control_pin.set_low().unwrap();
-			delay(WS2811_0L_TIME_CLOCKS);
+		let start_time = get_cycle_count();
+		for idx in 0..(NUM_LEDS as u32 * 8) {
+			window_led_control_pin.set_high();
+			door_led_control_pin.set_high();
+			closet_led_control_pin.set_high();
+			delay_with_start(start_time, WS2811_0H_TIME_CLOCKS+(idx*200));
+			window_led_control_pin.set_low();
+			door_led_control_pin.set_low();
+			closet_led_control_pin.set_low();
+			delay_with_start(start_time, WS2811_0L_TIME_CLOCKS+(idx*200));
 		}
 		delay(CORE_HZ);
 	}
