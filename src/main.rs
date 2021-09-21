@@ -2,10 +2,12 @@
 #![no_main]
 
 use esp32_hal::target;
+use esp32_hal::gpio::{OutputPin, PushPull, Output};
 use hal::prelude::*;
 use xtensa_lx::timer::{delay, get_cycle_count};
 use panic_halt as _;
 use esp32_hal as hal;
+use crate::ColorOrder::RGB;
 
 //readability consts:
 const HIGH: bool = true;
@@ -19,7 +21,6 @@ const CORE_HZ: u32 = 80_000_000;
 const CORE_PERIOD_NS:f32 = 12.5;
 
 //Timing values for our 800kHz WS2811 Strips in nanoseconds:
-//TODO: Figure out timing shit.
 const WS2811_0H_TIME_NS: u32 = 500;
 const WS2811_0L_TIME_NS: u32 = 2000;
 const WS2811_1H_TIME_NS: u32 = 1200;
@@ -32,6 +33,7 @@ const WS2811_1H_TIME_CLOCKS: u32 = (WS2811_1H_TIME_NS as f32 / CORE_PERIOD_NS) a
 const WS2811_1L_TIME_CLOCKS: u32 = (WS2811_1L_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
 
 //a color correction table for LEDs to make them look like the color you expect:
+//shamelessly stolen from Adafruit somewhere a long time ago.
 const GAMMA8: [u8; 256] = [
 	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
@@ -51,46 +53,163 @@ const GAMMA8: [u8; 256] = [
 	215,218,220,223,225,228,231,233,236,239,241,244,247,249,252,255
 ];
 
-//hardware specific config for tim's closet:
+//hardware specific config for tim's office:
 const WINDOW_STRIP_PIN: u8 = 13;
 const DOOR_STRIP_PIN: u8 = 25;
 const CLOSET_STRIP_PIN: u8 = 33;
 
-const NUM_LEDS_WINDOW_STRIP: u8 = 74;
-const NUM_LEDS_DOOR_STRIP: u8 = 61;
-const NUM_LEDS_CLOSET_STRIP: u8 = 34;
+const NUM_LEDS_WINDOW_STRIP: usize = 74;
+const NUM_LEDS_DOOR_STRIP: usize = 61;
+const NUM_LEDS_CLOSET_STRIP: usize = 34;
 
-const WINDOW_STRIP_FIRST_LED_INDEX: u8 = 0;
-const DOOR_STRIP_FIRST_LED_INDEX: u8 = WINDOW_STRIP_FIRST_LED_INDEX + NUM_LEDS_WINDOW_STRIP;
-const CLOSET_STRIP_FIRST_LED_INDEX: u8 = DOOR_STRIP_FIRST_LED_INDEX + NUM_LEDS_DOOR_STRIP;
-const NUM_LEDS: u8 = CLOSET_STRIP_FIRST_LED_INDEX + NUM_LEDS_CLOSET_STRIP;
+const NUM_LEDS: usize = get_total_num_leds(&ALL_STRIPS);
 
+//these are to determine how many clocks to remove from the nominal timing values
+//they were determined experimentally
 const DELAY_OVERHEAD_CLOCKS: u32 = 12;
-const SINGLE_OUTPUT_SET_OVERHEAD: u32 = 4;
+const SINGLE_OUTPUT_SET_OVERHEAD_CLOCKS: u32 = 4;
 const NUM_OUTPUTS: u32 = 3;
-const LED_FULL_CYCLE_TIME: u32 = 200;
+const LED_FULL_CYCLE_CLOCKS: u32 = 200;
 
+const fn get_total_num_leds(strips: &[WS2811PhysicalStrip]) -> usize {
+	let mut index = 0;
+	let mut total = 0;
+	while index < strips.len() {
+		total += strips[index].led_count;
+		index += 1;
+	}
+	total
+}
 
-/// GPIO output enable reg
-const GPIO_ENABLE_W1TS_REG: u32 = 0x3FF44024;
-
-/// GPIO output set register
-const GPIO_OUT_W1TS_REG: u32 = 0x3FF44008;
-/// GPIO output clear register
-const GPIO_OUT_W1TC_REG : u32 = 0x3FF4400C;
-
-/// The GPIO hooked up to the onboard LED
-const BLINKY_GPIO: u32 = 23;
-
-/// GPIO function mode
-const GPIO_FUNCX_OUT_BASE: u32 = 0x3FF44530;
-const GPIO_FUNCX_OUT_SEL_CFG: u32 = GPIO_FUNCX_OUT_BASE + (BLINKY_GPIO * 4);
-
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 struct Color {
 	r: u8,
 	g: u8,
 	b: u8,
+}
+
+enum ColorOrder {
+	RGB,
+	RBG,
+	GRB,
+	GBR,
+	BRG,
+	BGR,
+}
+
+struct WS2811PhysicalStrip {
+	pin: u8,
+	led_count: usize,
+	reversed: bool,
+	color_order: ColorOrder,
+}
+
+struct LogicalStrip<'a, const NUM_LEDS: usize> {
+	buffer: [Color; NUM_LEDS],
+	strips: &'a [WS2811PhysicalStrip],
+}
+
+impl <'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
+	fn new(strips: &'a [WS2811PhysicalStrip] ) -> Self {
+		LogicalStrip::<NUM_LEDS> {
+			buffer: [Color::default(); NUM_LEDS],
+			strips
+		}
+	}
+}
+
+//individual strips:
+const CLOSET_STRIP: WS2811PhysicalStrip =
+	WS2811PhysicalStrip {
+		pin: CLOSET_STRIP_PIN,
+		led_count: NUM_LEDS_CLOSET_STRIP,
+		reversed: false,
+		color_order: RGB
+	};
+const WINDOW_STRIP: WS2811PhysicalStrip =
+	WS2811PhysicalStrip {
+		pin: WINDOW_STRIP_PIN,
+		led_count: NUM_LEDS_WINDOW_STRIP,
+		reversed: false,
+		color_order: RGB
+	};
+const DOOR_STRIP: WS2811PhysicalStrip =
+	WS2811PhysicalStrip {
+		pin: DOOR_STRIP_PIN,
+		led_count: NUM_LEDS_DOOR_STRIP,
+		reversed: true,
+		color_order: RGB
+	};
+
+//combined strip group:
+const ALL_STRIPS: [WS2811PhysicalStrip; 3] = [
+	CLOSET_STRIP,
+	WINDOW_STRIP,
+	DOOR_STRIP,
+];
+
+struct Pins<
+	P1: OutputPin + Push,
+	P2: OutputPin + Push,
+	P3: OutputPin + Push,
+> {
+	p1: P1,
+	p2: P2,
+	p3: P3,
+}
+
+impl<P1: OutputPin + Push, P2: OutputPin + Push, P3: OutputPin + Push> Pins<P1, P2, P3> {
+	fn pull_low(pin: u8, mut pins: Pins<P1, P2, P3>) -> Pins<P1, P2, P3> {
+		match pin {
+			CLOSET_STRIP_PIN => pins.p1.our_set_low(),
+			WINDOW_STRIP_PIN => pins.p2.our_set_low(),
+			DOOR_STRIP_PIN => pins.p3.our_set_low(),
+			_ => (),
+		};
+		pins
+	}
+
+	fn push_high(pin: u8, mut pins: Pins<P1, P2, P3>) -> Pins<P1, P2, P3> {
+		match pin {
+			CLOSET_STRIP_PIN => pins.p1.our_set_high(),
+			WINDOW_STRIP_PIN => pins.p2.our_set_high(),
+			DOOR_STRIP_PIN => pins.p3.our_set_high(),
+			_ => (),
+		};
+		pins
+	}
+}
+
+trait Push {
+	fn our_set_low(&mut self);
+	fn our_set_high(&mut self);
+}
+
+impl Push for esp32_hal::gpio::Gpio23<Output<PushPull>> {
+	fn our_set_low(&mut self) {
+		self.set_low();
+	}
+	fn our_set_high(&mut self) {
+		self.set_high();
+	}
+}
+
+impl Push for esp32_hal::gpio::Gpio25<Output<PushPull>> {
+	fn our_set_low(&mut self) {
+		self.set_low();
+	}
+	fn our_set_high(&mut self) {
+		self.set_high();
+	}
+}
+
+impl Push for esp32_hal::gpio::Gpio33<Output<PushPull>> {
+	fn our_set_low(&mut self) {
+		self.set_low();
+	}
+	fn our_set_high(&mut self) {
+		self.set_high();
+	}
 }
 
 fn delay_from_start(start_clocks: u32, clocks_to_delay: u32) {
@@ -102,50 +221,33 @@ fn delay_from_start(start_clocks: u32, clocks_to_delay: u32) {
 	}
 }
 
-// fn send_bit(state: bool, start_time: u32, idx: u32) {
-// 	window_led_control_pin.set_high();
-// 	door_led_control_pin.set_high();
-// 	closet_led_control_pin.set_high();
-// 	let high_time = if state == HIGH {WS2811_1H_TIME_CLOCKS} else {WS2811_0H_TIME_CLOCKS};
-// 	let current_loop_delay = high_time - DELAY_OVERHEAD_CLOCKS - (SINGLE_OUTPUT_SET_OVERHEAD * NUM_OUTPUTS);
-// 	delay(current_loop_delay);
-// 	window_led_control_pin.set_low();
-// 	door_led_control_pin.set_low();
-// 	closet_led_control_pin.set_low();
-// 	delay_from_start(start_time, (idx + 1) * LED_FULL_CYCLE_TIME);
-// }
-
 #[entry]
 fn main() -> ! {
-
-	//an array that stores the current color of all LEDs:
-	let mut led_colors: [Color; NUM_LEDS as usize] = [Color {
-		r: 255,
-		g: 127,
-		b: 0,
-	}; NUM_LEDS as usize];
+	//make the logical strip:
+	let mut office_strip = LogicalStrip::<NUM_LEDS>::new(&ALL_STRIPS);
 
 	let device_peripherals = target::Peripherals::take().expect("Failed to obtain Peripherals");
 
 	let pins = device_peripherals.GPIO.split();
-	let mut window_led_control_pin = pins.gpio23.into_push_pull_output();
-	let mut door_led_control_pin = pins.gpio25.into_push_pull_output();
-	let mut closet_led_control_pin = pins.gpio33.into_push_pull_output();
+	let mut closet_led_control_gpio = pins.gpio33.into_push_pull_output();
+	let mut window_led_control_gpio = pins.gpio23.into_push_pull_output();
+	let mut door_led_control_gpio = pins.gpio25.into_push_pull_output();
+
+	let mut pins = Pins {
+		p1: closet_led_control_gpio,
+		p2: window_led_control_gpio,
+		p3: door_led_control_gpio,
+	};
 
 	loop {
 		let start_time = get_cycle_count();
 		for idx in 0..(NUM_LEDS as u32 * 8 * 3) {
-			window_led_control_pin.set_high();
-			door_led_control_pin.set_high();
-			closet_led_control_pin.set_high();
-			// let high_time = if state == HIGH {WS2811_1H_TIME_CLOCKS} else {WS2811_0H_TIME_CLOCKS};
+			pins = Pins::push_high(ALL_STRIPS[1].pin, pins);
 			let high_time = WS2811_1H_TIME_CLOCKS;
-			let current_loop_delay = high_time - DELAY_OVERHEAD_CLOCKS - (SINGLE_OUTPUT_SET_OVERHEAD * NUM_OUTPUTS);
+			let current_loop_delay = high_time - DELAY_OVERHEAD_CLOCKS - (SINGLE_OUTPUT_SET_OVERHEAD_CLOCKS * NUM_OUTPUTS);
 			delay(current_loop_delay);
-			window_led_control_pin.set_low();
-			door_led_control_pin.set_low();
-			closet_led_control_pin.set_low();
-			delay_from_start(start_time, (idx + 1) * LED_FULL_CYCLE_TIME);
+			pins = Pins::pull_low(ALL_STRIPS[1].pin, pins);
+			delay_from_start(start_time, (idx + 1) * LED_FULL_CYCLE_CLOCKS);
 		}
 		delay(CORE_HZ);
 	}
