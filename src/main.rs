@@ -233,6 +233,8 @@ fn main() -> ! {
 		p3: door_led_control_gpio,
 	};
 
+	//this delay makes it so the first LED doesn't randomly turn green:
+	delay(CORE_HZ);
 	loop {
 		let start_time = get_cycle_count();
 		for idx in 0..(NUM_LEDS as u32 * 8 * 3) {
