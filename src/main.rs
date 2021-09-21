@@ -9,6 +9,20 @@ use panic_halt as _;
 use esp32_hal as hal;
 use crate::ColorOrder::RGB;
 
+//macro to add Push trait to gpio pins:
+macro_rules! push {
+	($p:ty) => {
+		impl Push for $p {
+			fn our_set_low(&mut self) {
+				self.set_low().unwrap();
+			}
+			fn our_set_high(&mut self) {
+				self.set_high().unwrap();
+			}
+		}
+	};
+}
+
 //readability consts:
 const HIGH: bool = true;
 const LOW: bool = false;
@@ -54,9 +68,14 @@ const GAMMA8: [u8; 256] = [
 ];
 
 //hardware specific config for tim's office:
-const WINDOW_STRIP_PIN: u8 = 13;
+const WINDOW_STRIP_PIN: u8 = 23;
 const DOOR_STRIP_PIN: u8 = 25;
 const CLOSET_STRIP_PIN: u8 = 33;
+
+//make sure to add the pins you're using here:
+push!(esp32_hal::gpio::Gpio23<Output<PushPull>>);
+push!(esp32_hal::gpio::Gpio25<Output<PushPull>>);
+push!(esp32_hal::gpio::Gpio33<Output<PushPull>>);
 
 const NUM_LEDS_WINDOW_STRIP: usize = 74;
 const NUM_LEDS_DOOR_STRIP: usize = 61;
@@ -185,33 +204,6 @@ trait Push {
 	fn our_set_high(&mut self);
 }
 
-impl Push for esp32_hal::gpio::Gpio23<Output<PushPull>> {
-	fn our_set_low(&mut self) {
-		self.set_low();
-	}
-	fn our_set_high(&mut self) {
-		self.set_high();
-	}
-}
-
-impl Push for esp32_hal::gpio::Gpio25<Output<PushPull>> {
-	fn our_set_low(&mut self) {
-		self.set_low();
-	}
-	fn our_set_high(&mut self) {
-		self.set_high();
-	}
-}
-
-impl Push for esp32_hal::gpio::Gpio33<Output<PushPull>> {
-	fn our_set_low(&mut self) {
-		self.set_low();
-	}
-	fn our_set_high(&mut self) {
-		self.set_high();
-	}
-}
-
 fn delay_from_start(start_clocks: u32, clocks_to_delay: u32) {
 	let target = start_clocks + clocks_to_delay;
 	loop {
@@ -229,9 +221,11 @@ fn main() -> ! {
 	let device_peripherals = target::Peripherals::take().expect("Failed to obtain Peripherals");
 
 	let pins = device_peripherals.GPIO.split();
-	let mut closet_led_control_gpio = pins.gpio33.into_push_pull_output();
-	let mut window_led_control_gpio = pins.gpio23.into_push_pull_output();
-	let mut door_led_control_gpio = pins.gpio25.into_push_pull_output();
+
+	//make sure the pin numbers here match the const pin numbers and macros above:
+	let closet_led_control_gpio = pins.gpio33.into_push_pull_output();
+	let window_led_control_gpio = pins.gpio23.into_push_pull_output();
+	let door_led_control_gpio = pins.gpio25.into_push_pull_output();
 
 	let mut pins = Pins {
 		p1: closet_led_control_gpio,
@@ -243,7 +237,7 @@ fn main() -> ! {
 		let start_time = get_cycle_count();
 		for idx in 0..(NUM_LEDS as u32 * 8 * 3) {
 			pins = Pins::push_high(ALL_STRIPS[1].pin, pins);
-			let high_time = WS2811_1H_TIME_CLOCKS;
+			let high_time = WS2811_0H_TIME_CLOCKS;
 			let current_loop_delay = high_time - DELAY_OVERHEAD_CLOCKS - (SINGLE_OUTPUT_SET_OVERHEAD_CLOCKS * NUM_OUTPUTS);
 			delay(current_loop_delay);
 			pins = Pins::pull_low(ALL_STRIPS[1].pin, pins);
