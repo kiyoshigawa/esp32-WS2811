@@ -36,30 +36,32 @@ struct PinControl<
 	p1: P1,
 	p2: P2,
 	p3: P3,
-	send_all_start_cycle_count: u32,
-	send_all_current_bit: u32,
+	// send_all_start_cycle_count: u32,
+	// send_all_current_bit: u32,
 }
 
-impl<P1: OutputPin + Push, P2: OutputPin + Push, P3: OutputPin + Push> PinControl<P1, P2, P3> {
+impl<P1, P2, P3> PinControl<P1, P2, P3>
+where P1: OutputPin + Push,
+	  P2: OutputPin + Push,
+	  P3: OutputPin + Push,
+{
 	//this allows us to use the pin number in a match statement to call the set_low() function.
-	fn pull_low(pin: u8, mut pins: PinControl<P1, P2, P3>) -> PinControl<P1, P2, P3> {
+	fn pull_low(pin: u8, pins: &mut PinControl<P1, P2, P3>) {
 		match pin {
 			CLOSET_STRIP_PIN => pins.p1.our_set_low(),
 			WINDOW_STRIP_PIN => pins.p2.our_set_low(),
 			DOOR_STRIP_PIN => pins.p3.our_set_low(),
-			_ => (),
-		};
-		pins
+			_ => unreachable!(),
+		}
 	}
 	//this allows us to use the pin number in a match statement to call the set_high() function.
-	fn push_high(pin: u8, mut pins: PinControl<P1, P2, P3>) -> PinControl<P1, P2, P3> {
+	fn push_high(pin: u8, pins: &mut PinControl<P1, P2, P3>) {
 		match pin {
 			CLOSET_STRIP_PIN => pins.p1.our_set_high(),
 			WINDOW_STRIP_PIN => pins.p2.our_set_high(),
 			DOOR_STRIP_PIN => pins.p3.our_set_high(),
-			_ => (),
-		};
-		pins
+			_ => unreachable!(),
+		}
 	}
 }
 
@@ -93,7 +95,7 @@ const WS2811_0H_TIME_CLOCKS: u32 = (WS2811_0H_TIME_NS as f32 / CORE_PERIOD_NS) a
 const WS2811_0L_TIME_CLOCKS: u32 = (WS2811_0L_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
 const WS2811_1H_TIME_CLOCKS: u32 = (WS2811_1H_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
 const WS2811_1L_TIME_CLOCKS: u32 = (WS2811_1L_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
-const LED_FULL_CYCLE_CLOCKS: u32 = (WS2811_FULL_CYCLE_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
+const WS2811_FULL_CYCLE_CLOCKS: u32 = (WS2811_FULL_CYCLE_TIME_NS as f32 / CORE_PERIOD_NS) as u32;
 
 //these are to determine how many clocks to remove from the nominal timing values
 //the values below were determined experimentally, tweak as needed for consistency
@@ -136,6 +138,8 @@ push!(esp32_hal::gpio::Gpio33<Output<PushPull>>);
 const NUM_LEDS_WINDOW_STRIP: usize = 74;
 const NUM_LEDS_DOOR_STRIP: usize = 61;
 const NUM_LEDS_CLOSET_STRIP: usize = 34;
+const MAX_SINGLE_STRIP_BYTE_BUFFER_LENGTH: usize = get_single_strip_buffer_max_length(&ALL_STRIPS);
+const MAX_SINGLE_STRIP_BIT_BUFFER_LENGTH: usize = MAX_SINGLE_STRIP_BYTE_BUFFER_LENGTH * 8;
 
 const fn get_total_num_leds(strips: &[WS2811PhysicalStrip]) -> usize {
 	let mut index = 0;
@@ -145,6 +149,19 @@ const fn get_total_num_leds(strips: &[WS2811PhysicalStrip]) -> usize {
 		index += 1;
 	}
 	total
+}
+
+const fn get_single_strip_buffer_max_length(strips: &[WS2811PhysicalStrip]) -> usize {
+	let mut max_len = 0;
+	let mut index = 0;
+	while index < strips.len() {
+		if strips[index].led_count > max_len {
+			max_len = strips[index].led_count;
+		}
+		index += 1;
+	}
+	// three bytes per led
+	max_len * 3
 }
 
 #[derive(Default, Copy, Clone)]
@@ -171,66 +188,17 @@ struct WS2811PhysicalStrip {
 }
 
 impl WS2811PhysicalStrip {
-	//this sends a single bit's worth of data down the data line.
-	//it will return as soon as it is done sending the high portion of the bit
-	//so that the next bit can be set up before the end of the cycle.
-	fn send_bit<P1: OutputPin + Push, P2: OutputPin + Push, P3: OutputPin + Push>(
-		&self,
-		mut pins: PinControl<P1, P2, P3>,
-		bit_value: u32,
-	) -> PinControl<P1, P2, P3> {
-		let mut high_time_clocks = 0;
-		match bit_value {
-			0 => { high_time_clocks = WS2811_0H_TIME_CLOCKS; },
-			1 => { high_time_clocks = WS2811_1H_TIME_CLOCKS; },
-			_ => { high_time_clocks = WS2811_1H_TIME_CLOCKS; },
+	fn send_bits<P1, P2, P3> ( &self, pins: &mut PinControl<P1, P2, P3>, timings: &[(u32, u32)] )
+	where P1: OutputPin + Push,
+		  P2: OutputPin + Push,
+		  P3: OutputPin + Push,
+	{
+		for timing in timings {
+			delay_until(timing.0);
+			PinControl::push_high(self.pin, pins);
+			delay_until(timing.1);
+			PinControl::pull_low(self.pin, pins);
 		}
-		let current_loop_delay = high_time_clocks - DELAY_OVERHEAD_CLOCKS - SINGLE_OUTPUT_SET_OVERHEAD_CLOCKS;
-		pins = PinControl::push_high(self.pin, pins);
-		delay(current_loop_delay);
-		pins = PinControl::pull_low(self.pin, pins);
-		//increment the bit index for timing purposes:
-		pins.send_all_current_bit += 1;
-		pins
-	}
-	//sends a single pixel's worth of color bits down the data line.
-	fn send_single_pixel<P1: OutputPin + Push, P2: OutputPin + Push, P3: OutputPin + Push>(
-		&self,
-		mut pins: PinControl<P1, P2, P3>,
-		_color: &Color,
-	) -> PinControl<P1, P2, P3> {
-		//order the colors based on self.color_order and store in a single u32
-		let mut color_bits = 0xFF0000;
-		//use each bit as a high or low value to send
-		for current_bit in 0..24 {
-			pins = self.send_bit(pins, (color_bits >> current_bit) & 0x01);
-			let cycle_end_clocks = pins.send_all_start_cycle_count + ( LED_FULL_CYCLE_CLOCKS * pins.send_all_current_bit );
-			while get_cycle_count() < cycle_end_clocks {
-				//do nothing so the next cycle starts at the right time
-			}
-		}
-		pins
-	}
-
-	//this sends color data for all the pixels on this physical strip's pin:
-	fn send_all_strip_pixels<P1: OutputPin + Push, P2: OutputPin + Push, P3: OutputPin + Push, const S: usize>(
-		&self,
-		mut pins: PinControl<P1, P2, P3>,
-		color_buffer: &[Color; S],
-		start_index: usize,
-		end_index: usize,
-	) -> PinControl<P1, P2, P3> {
-		let strip_color_buffer = color_buffer[start_index..end_index].iter();
-		if self.reversed {
-			for color in strip_color_buffer.rev() {
-				pins = self.send_single_pixel(pins, color);
-			}
-		} else {
-			for color in strip_color_buffer {
-				pins = self.send_single_pixel(pins, color);
-			}
-		}
-		pins
 	}
 }
 
@@ -247,24 +215,74 @@ impl<'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
 		}
 	}
 	//this will iterate over all the strips and send the led data in series:
-	fn send_all_sequential<P1: OutputPin + Push, P2: OutputPin + Push, P3: OutputPin + Push> (
-		&self,
-		mut pins: PinControl<P1, P2, P3>,
-	) -> PinControl<P1, P2, P3> {
+	fn send_all_sequential<P1, P2, P3> ( &self, pins: &mut PinControl<P1, P2, P3>)
+	where P1: OutputPin + Push,
+		  P2: OutputPin + Push,
+		  P3: OutputPin + Push,
+	{
 		let mut start_index = 0;
-		pins.send_all_start_cycle_count = get_cycle_count();
-		pins.send_all_current_bit = 1; //start at 1 so it always adds an offset.
+
 		for strip in self.strips {
 			let end_index = start_index + strip.led_count;
-			pins = strip.send_all_strip_pixels(
-				pins,
-				&self.color_buffer,
-				start_index,
-				end_index,
-			);
+			// generate byte array from color array (taking care of color order)
+			let mut current_strip_colors = &self.color_buffer[start_index..end_index];
+			let byte_count = strip.led_count * 3;
+			let bit_count = byte_count * 8;
+
+			let mut byte_buffer = [0_u8; MAX_SINGLE_STRIP_BYTE_BUFFER_LENGTH];
+			if strip.reversed {
+				for (i, color) in current_strip_colors.iter().rev().enumerate() {
+					let base = i * 3;
+					byte_buffer[base + 0] = color.r;
+					byte_buffer[base + 1] = color.g;
+					byte_buffer[base + 2] = color.b;
+				}
+			} else {
+				for (i, color) in current_strip_colors.iter().enumerate() {
+					let base = i * 3;
+					byte_buffer[base + 0] = color.r;
+					byte_buffer[base + 1] = color.g;
+					byte_buffer[base + 2] = color.b;
+				}
+			}
+
+			let mut bit_buffer = [LOW; MAX_SINGLE_STRIP_BIT_BUFFER_LENGTH];
+			// from byte array to bit array
+			for (i, byte) in byte_buffer.iter().take(byte_count).enumerate() {
+				let base = i * 8;
+				for bit in 0..8_u8 {
+					bit_buffer[base + bit as usize] = match (byte >> bit) & 0x01 {
+						0x01 => HIGH,
+						0x00 => LOW,
+						_ => unreachable!(),
+					};
+				}
+			}
+			// from bit array to timing array
+			let mut timings = [(0_u32,0_u32); MAX_SINGLE_STRIP_BIT_BUFFER_LENGTH];
+			for (i, &bit) in bit_buffer.iter().take(bit_count).enumerate() {
+				let bit_timing = match bit {
+					HIGH => WS2811_1H_TIME_CLOCKS,
+					LOW => WS2811_0H_TIME_CLOCKS,
+					_ => unreachable!(),
+				};
+				let base_time = WS2811_FULL_CYCLE_CLOCKS * i as u32;
+				timings[i] = (base_time, base_time + bit_timing);
+			}
+
+			// add clock + offset to timing array
+			let offset_clocks = 2000;
+			let clock_and_offset = get_cycle_count() + offset_clocks;
+			for i in 0..timings.len() {
+				timings[i].0 = timings[i].0 + clock_and_offset;
+				timings[i].1 = timings[i].1 + clock_and_offset;
+			}
+
+			// call send bits and send the timing array
+			strip.send_bits(pins, &timings);
+
 			start_index = end_index;
 		}
-		pins
 	}
 }
 
@@ -303,10 +321,9 @@ const NUM_LEDS: usize = get_total_num_leds(&ALL_STRIPS);
 
 //this is a delay function that will prevent progress to a specified number of
 //clock cycles from a specified start_clocks value.
-fn delay_from_start(start_clocks: u32, clocks_to_delay: u32) {
-	let target = start_clocks + clocks_to_delay;
+fn delay_until(clocks: u32) {
 	loop {
-		if get_cycle_count() > target {
+		if get_cycle_count() > clocks {
 			break;
 		}
 	}
@@ -330,12 +347,10 @@ fn main() -> ! {
 		p1: closet_led_control_gpio,
 		p2: window_led_control_gpio,
 		p3: door_led_control_gpio,
-		send_all_start_cycle_count: 0_u32,
-		send_all_current_bit: 0_u32,
 	};
 
 	loop {
-		pins = office_strip.send_all_sequential(pins);
+		office_strip.send_all_sequential(&mut pins);
 		delay(CORE_HZ);
 	}
 }
