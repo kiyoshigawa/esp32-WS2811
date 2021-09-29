@@ -66,6 +66,49 @@ const NUM_LEDS_CLOSET_STRIP: usize = 34;
 const MAX_SINGLE_STRIP_BYTE_BUFFER_LENGTH: usize = get_single_strip_buffer_max_length(&ALL_STRIPS);
 const MAX_SINGLE_STRIP_BIT_BUFFER_LENGTH: usize = MAX_SINGLE_STRIP_BYTE_BUFFER_LENGTH * 8;
 
+//individual strips:
+const CLOSET_STRIP: WS2811PhysicalStrip =
+	WS2811PhysicalStrip {
+		pin: p::CLOSET_STRIP_PIN,
+		led_count: NUM_LEDS_CLOSET_STRIP,
+		reversed: false,
+		_color_order: ColorOrder::BRG,
+	};
+const WINDOW_STRIP: WS2811PhysicalStrip =
+	WS2811PhysicalStrip {
+		pin: p::WINDOW_STRIP_PIN,
+		led_count: NUM_LEDS_WINDOW_STRIP,
+		reversed: false,
+		_color_order: ColorOrder::BRG,
+	};
+const DOOR_STRIP: WS2811PhysicalStrip =
+	WS2811PhysicalStrip {
+		pin: p::DOOR_STRIP_PIN,
+		led_count: NUM_LEDS_DOOR_STRIP,
+		reversed: true,
+		_color_order: ColorOrder::BRG,
+	};
+
+//combined strip group:
+const ALL_STRIPS: [WS2811PhysicalStrip; 3] = [
+	CLOSET_STRIP,
+	WINDOW_STRIP,
+	DOOR_STRIP,
+];
+
+//calculate the total number of LEDs from the above values:
+const NUM_LEDS: usize = get_total_num_leds(&ALL_STRIPS);
+
+#[allow(dead_code)]
+enum ColorOrder {
+	RGB,
+	RBG,
+	GRB,
+	GBR,
+	BRG,
+	BGR,
+}
+
 const fn get_total_num_leds(strips: &[WS2811PhysicalStrip]) -> usize {
 	let mut index = 0;
 	let mut total = 0;
@@ -87,15 +130,6 @@ const fn get_single_strip_buffer_max_length(strips: &[WS2811PhysicalStrip]) -> u
 	}
 	// three bytes per led
 	max_len * 3
-}
-
-enum ColorOrder {
-	RGB,
-	RBG,
-	GRB,
-	GBR,
-	BRG,
-	BGR,
 }
 
 struct WS2811PhysicalStrip {
@@ -133,8 +167,8 @@ impl<'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
 		}
 	}
 
-	//this sets the color values in the color array by index:
-	fn set_color(&mut self, index: usize, color: c::Color) {
+	//this sets the color value in the color array at index:
+	fn set_color_at_index(&mut self, index: usize, color: c::Color) {
 		self.color_buffer[index].r = c::GAMMA8[color.r as usize];
 		self.color_buffer[index].g = c::GAMMA8[color.g as usize];
 		self.color_buffer[index].b = c::GAMMA8[color.b as usize];
@@ -150,11 +184,11 @@ impl<'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
 
 		for strip in self.strips {
 			let end_index = start_index + strip.led_count;
+
 			// generate byte array from color array (taking care of color order)
 			let current_strip_colors = &self.color_buffer[start_index..end_index];
 			let byte_count = strip.led_count * 3;
 			let bit_count = byte_count * 8;
-
 			let mut byte_buffer = [0_u8; MAX_SINGLE_STRIP_BYTE_BUFFER_LENGTH];
 			if strip.reversed {
 				for (i, color) in current_strip_colors.iter().rev().enumerate() {
@@ -172,8 +206,8 @@ impl<'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
 				}
 			}
 
-			let mut bit_buffer = [ZERO; MAX_SINGLE_STRIP_BIT_BUFFER_LENGTH];
 			// from byte array to bit array
+			let mut bit_buffer = [ZERO; MAX_SINGLE_STRIP_BIT_BUFFER_LENGTH];
 			for (i, byte) in byte_buffer.iter().take(byte_count).enumerate() {
 				let base = i * 8;
 				for bit in 0..8_u8 {
@@ -184,6 +218,7 @@ impl<'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
 					};
 				}
 			}
+
 			// from bit array to timing array
 			let mut timings = [(0_u32,0_u32); MAX_SINGLE_STRIP_BIT_BUFFER_LENGTH];
 			for (i, &bit) in bit_buffer.iter().take(bit_count).enumerate() {
@@ -211,39 +246,6 @@ impl<'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
 	}
 }
 
-//individual strips:
-const CLOSET_STRIP: WS2811PhysicalStrip =
-	WS2811PhysicalStrip {
-		pin: p::CLOSET_STRIP_PIN,
-		led_count: NUM_LEDS_CLOSET_STRIP,
-		reversed: false,
-		_color_order: ColorOrder::BRG,
-	};
-const WINDOW_STRIP: WS2811PhysicalStrip =
-	WS2811PhysicalStrip {
-		pin: p::WINDOW_STRIP_PIN,
-		led_count: NUM_LEDS_WINDOW_STRIP,
-		reversed: false,
-		_color_order: ColorOrder::BRG,
-	};
-const DOOR_STRIP: WS2811PhysicalStrip =
-	WS2811PhysicalStrip {
-		pin: p::DOOR_STRIP_PIN,
-		led_count: NUM_LEDS_DOOR_STRIP,
-		reversed: true,
-		_color_order: ColorOrder::BRG,
-	};
-
-//combined strip group:
-const ALL_STRIPS: [WS2811PhysicalStrip; 3] = [
-	CLOSET_STRIP,
-	WINDOW_STRIP,
-	DOOR_STRIP,
-];
-
-//calculate the total number of LEDs from the above values:
-const NUM_LEDS: usize = get_total_num_leds(&ALL_STRIPS);
-
 //this is a delay function that will prevent progress to a specified number of
 //clock cycles as measured by the get_cycle_count() function.
 fn delay_until(clocks: u32) {
@@ -259,15 +261,13 @@ fn main() -> ! {
 	//make the logical strip:
 	let mut office_strip = LogicalStrip::<NUM_LEDS>::new(&ALL_STRIPS);
 
+	//get physical pins to a usable state:
 	let device_peripherals = target::Peripherals::take().expect("Failed to obtain Peripherals");
-
 	let peripheral_pins = device_peripherals.GPIO.split();
-
-	//make sure the pin numbers here match the const pin numbers and macros above:
+	//make sure the pin numbers here match the const pin numbers and macros above and in pins.rs:
 	let closet_led_control_gpio = peripheral_pins.gpio33.into_push_pull_output();
 	let window_led_control_gpio = peripheral_pins.gpio13.into_push_pull_output();
 	let door_led_control_gpio = peripheral_pins.gpio25.into_push_pull_output();
-
 	let mut pins = p::PinControl {
 		p1: closet_led_control_gpio,
 		p2: window_led_control_gpio,
@@ -275,7 +275,7 @@ fn main() -> ! {
 	};
 
 	for i in 0..office_strip.color_buffer.len() {
-		office_strip.set_color(i, c::OFF);
+		office_strip.set_color_at_index(i, c::DEEP_BLUE);
 	}
 	loop {
 		office_strip.send_all_sequential(&mut pins);
