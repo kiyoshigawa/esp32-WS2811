@@ -1,7 +1,8 @@
 #![no_std]
 #![no_main]
-
 #[macro_use]
+#[allow(unused_imports)]
+
 pub mod colors;
 pub mod pins;
 
@@ -174,6 +175,13 @@ impl<'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
 		self.color_buffer[index].b = c::GAMMA8[color.b as usize];
 	}
 
+	//this fills the entire strip with a single color:
+	fn set_strip_to_solid_color(&mut self, color: c::Color) {
+		for i in 0..self.color_buffer.len() {
+			self.set_color_at_index(i, color);
+		}
+	}
+
 	//this will iterate over all the strips and send the led data in series:
 	fn send_all_sequential<P1, P2, P3> ( &self, pins: &mut p::PinControl<P1, P2, P3>)
 	where P1: OutputPin + p::Push,
@@ -274,9 +282,8 @@ fn main() -> ! {
 		p3: door_led_control_gpio,
 	};
 
-	for i in 0..office_strip.color_buffer.len() {
-		office_strip.set_color_at_index(i, c::DEEP_BLUE);
-	}
+	office_strip.set_strip_to_solid_color(c::C_WHITE);
+
 	loop {
 		office_strip.send_all_sequential(&mut pins);
 		delay(CORE_HZ);
