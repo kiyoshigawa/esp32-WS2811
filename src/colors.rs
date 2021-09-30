@@ -26,6 +26,16 @@ pub mod colors {
 			self.g = GAMMA8[g as usize];
 			self.b = GAMMA8[b as usize];
 		}
+
+		//this maps a color to a fractional mid-color based on the position of the factor between the in_min and in_max values.
+		//It will automatically truncate any values below 0 or larger than 255 when it is cast back to a u8 at the end of the calculation.
+		pub fn color_map(factor: i32, in_min: i32, in_max: i32, start_color: Color, end_color: Color) -> Color {
+			let mut mid_color = C_OFF;
+			mid_color.r = ((factor - in_min) * (end_color.r as i32 - start_color.r as i32) / (in_max - in_min) + start_color.r) as u8;
+			mid_color.g = ((factor - in_min) * (end_color.g as i32 - start_color.r as i32) / (in_max - in_min) + start_color.g) as u8;
+			mid_color.b = ((factor - in_min) * (end_color.b as i32 - start_color.r as i32) / (in_max - in_min) + start_color.b) as u8;
+			mid_color
+		}
 	}
 
 	//the rainbow struct contains a list of colors in order and a number of colors.
@@ -467,8 +477,113 @@ pub mod colors {
 		],
 		num_colors: 10,
 	};
+	pub const R_DARK_RED_PATTERN: Rainbow = Rainbow {
+		colors: [
+			Some(Color {r: 127, g: 0, b: 0}),
+			Some(Color {r: 64, g: 0, b: 0}),
+			Some(Color {r: 127, g: 0, b: 0}),
+			Some(Color {r: 64, g: 0, b: 0}),
+			Some(Color {r: 127, g: 0, b: 0}),
+			Some(Color {r: 64, g: 0, b: 0}),
+			None,
+			None,
+			None,
+			None,
+		],
+		num_colors: 6,
+	};
+	pub const R_DARK_YELLOW_PATTERN: Rainbow = Rainbow {
+		colors: [
+			Some(Color {r: 127, g: 127, b: 0}),
+			Some(Color {r: 64, g: 64, b: 0}),
+			Some(Color {r: 127, g: 127, b: 0}),
+			Some(Color {r: 64, g: 64, b: 0}),
+			Some(Color {r: 127, g: 127, b: 0}),
+			Some(Color {r: 64, g: 64, b: 0}),
+			None,
+			None,
+			None,
+			None,
+		],
+		num_colors: 6,
+	};
+	pub const R_DARK_GREEN_PATTERN: Rainbow = Rainbow {
+		colors: [
+			Some(Color {r: 0, g: 127, b: 0}),
+			Some(Color {r: 0, g: 64, b: 0}),
+			Some(Color {r: 0, g: 127, b: 0}),
+			Some(Color {r: 0, g: 64, b: 0}),
+			Some(Color {r: 0, g: 127, b: 0}),
+			Some(Color {r: 0, g: 64, b: 0}),
+			None,
+			None,
+			None,
+			None,
+		],
+		num_colors: 6,
+	};
+	pub const R_DARK_SKY_BLUE_PATTERN: Rainbow = Rainbow {
+		colors: [
+			Some(Color {r: 0, g: 127, b: 127}),
+			Some(Color {r: 0, g: 64, b: 64}),
+			Some(Color {r: 0, g: 127, b: 127}),
+			Some(Color {r: 0, g: 64, b: 64}),
+			Some(Color {r: 0, g: 127, b: 127}),
+			Some(Color {r: 0, g: 64, b: 64}),
+			None,
+			None,
+			None,
+			None,
+		],
+		num_colors: 6,
+	};
+	pub const R_DARK_BLUE_PATTERN: Rainbow = Rainbow {
+		colors: [
+			Some(Color {r: 0, g: 0, b: 127}),
+			Some(Color {r: 0, g: 0, b: 64}),
+			Some(Color {r: 0, g: 0, b: 127}),
+			Some(Color {r: 0, g: 0, b: 64}),
+			Some(Color {r: 0, g: 0, b: 127}),
+			Some(Color {r: 0, g: 0, b: 64}),
+			None,
+			None,
+			None,
+			None,
+		],
+		num_colors: 6,
+	};
+	pub const R_DARK_PURPLE_PATTERN: Rainbow = Rainbow {
+		colors: [
+			Some(Color {r: 127, g: 0, b: 127}),
+			Some(Color {r: 64, g: 0, b: 64}),
+			Some(Color {r: 127, g: 0, b: 127}),
+			Some(Color {r: 64, g: 0, b: 64}),
+			Some(Color {r: 127, g: 0, b: 127}),
+			Some(Color {r: 64, g: 0, b: 64}),
+			None,
+			None,
+			None,
+			None,
+		],
+		num_colors: 6,
+	};
+	pub const R_WHITE_PATTERN: Rainbow = Rainbow {
+		colors: [
+			Some(C_WHITE),
+			Some(Color {r: 64, g: 64, b: 64}),
+			Some(C_WHITE),
+			Some(Color {r: 64, g: 64, b: 64}),
+			Some(C_WHITE),
+			Some(Color {r: 64, g: 64, b: 64}),
+			None,
+			None,
+			None,
+			None,
+		],
+		num_colors: 6,
+	};
 
-	pub const NUM_RAINBOWS: usize = 25;
+	pub const NUM_RAINBOWS: usize = 32;
 
 	pub const RAINBOW_ARRAY: [Rainbow; NUM_RAINBOWS] = [
 		R_OFF,
@@ -496,5 +611,12 @@ pub mod colors {
 		R_BW,
 		R_RW,
 		R_GW,
+		R_DARK_RED_PATTERN,
+		R_DARK_YELLOW_PATTERN,
+		R_DARK_GREEN_PATTERN,
+		R_DARK_SKY_BLUE_PATTERN,
+		R_DARK_BLUE_PATTERN,
+		R_DARK_PURPLE_PATTERN,
+		R_WHITE_PATTERN,
 	];
 }
