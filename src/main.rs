@@ -1,19 +1,20 @@
 #![no_std]
 #![no_main]
 #[macro_use]
-#[allow(unused_imports)]
 
+#[allow(unused_imports)]
 pub mod colors;
 pub mod pins;
-
+pub mod animations;
+use crate::colors::colors as c;
+use crate::pins::pins as p;
+use crate::animations::animations as a;
 use esp32_hal::target;
 use esp32_hal::gpio::{OutputPin, PushPull, Output};
 use hal::prelude::*;
 use xtensa_lx::timer::{delay, get_cycle_count};
 use panic_halt as _;
 use esp32_hal as hal;
-use crate::colors::colors as c;
-use crate::pins::pins as p;
 
 //macro to add Push trait to gpio pins:
 //this wraps the pins' set_high() and set_low() functions in our_set_* wrappers.
@@ -158,13 +159,15 @@ impl WS2811PhysicalStrip {
 struct LogicalStrip<'a, const NUM_LEDS: usize> {
 	color_buffer: [c::Color; NUM_LEDS],
 	strips: &'a [WS2811PhysicalStrip],
+	animation: a::Animation,
 }
 
 impl<'a, const NUM_LEDS: usize> LogicalStrip<'a, NUM_LEDS> {
-	fn new(strips: &'a [WS2811PhysicalStrip] ) -> Self {
+	fn new(strips: &'a [WS2811PhysicalStrip], animation: a::Animation ) -> Self {
 		LogicalStrip::<NUM_LEDS> {
 			color_buffer: [c::Color::default(); NUM_LEDS],
 			strips,
+			animation,
 		}
 	}
 
@@ -267,7 +270,8 @@ fn delay_until(clocks: u32) {
 #[entry]
 fn main() -> ! {
 	//make the logical strip:
-	let mut office_strip = LogicalStrip::<NUM_LEDS>::new(&ALL_STRIPS);
+	let initial_animation = a::Animation::new(NUM_LEDS);
+	let mut office_strip = LogicalStrip::<NUM_LEDS>::new(&ALL_STRIPS, initial_animation);
 
 	//get physical pins to a usable state:
 	let device_peripherals = target::Peripherals::take().expect("Failed to obtain Peripherals");
@@ -282,7 +286,7 @@ fn main() -> ! {
 		p3: door_led_control_gpio,
 	};
 
-	office_strip.set_strip_to_solid_color(c::C_WHITE);
+	office_strip.set_strip_to_solid_color(c::C_T_4000K);
 
 	loop {
 		office_strip.send_all_sequential(&mut pins);

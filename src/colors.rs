@@ -1,8 +1,6 @@
+#[allow(dead_code)]
+
 pub mod colors {
-	#[allow(dead_code)]
-
-	pub const MAX_COLORS_IN_RAINBOW: usize = 10;
-
 	#[derive(Default, Copy, Clone)]
 	pub struct Color {
 		pub r: u8,
@@ -29,11 +27,11 @@ pub mod colors {
 
 		//this maps a color to a fractional mid-color based on the position of the factor between the in_min and in_max values.
 		//It will automatically truncate any values below 0 or larger than 255 when it is cast back to a u8 at the end of the calculation.
-		pub fn color_map(factor: i32, in_min: i32, in_max: i32, start_color: Color, end_color: Color) -> Color {
+		pub fn color_lerp(factor: i32, in_min: i32, in_max: i32, start_color: Color, end_color: Color) -> Color {
 			let mut mid_color = C_OFF;
-			mid_color.r = ((factor - in_min) * (end_color.r as i32 - start_color.r as i32) / (in_max - in_min) + start_color.r) as u8;
-			mid_color.g = ((factor - in_min) * (end_color.g as i32 - start_color.r as i32) / (in_max - in_min) + start_color.g) as u8;
-			mid_color.b = ((factor - in_min) * (end_color.b as i32 - start_color.r as i32) / (in_max - in_min) + start_color.b) as u8;
+			mid_color.r = ((factor - in_min) * (end_color.r as i32 - start_color.r as i32) / (in_max - in_min) + start_color.r as i32) as u8;
+			mid_color.g = ((factor - in_min) * (end_color.g as i32 - start_color.r as i32) / (in_max - in_min) + start_color.g as i32) as u8;
+			mid_color.b = ((factor - in_min) * (end_color.b as i32 - start_color.r as i32) / (in_max - in_min) + start_color.b as i32) as u8;
 			mid_color
 		}
 	}
@@ -67,24 +65,27 @@ pub mod colors {
 	];
 
 	//generic colors:
-	pub const C_RED: Color = Color { r: GAMMA8[255], g: GAMMA8[0], b: GAMMA8[0] };
-	pub const C_ORANGE: Color = Color { r: GAMMA8[255], g: GAMMA8[127], b: GAMMA8[0] };
-	pub const C_YELLOW: Color = Color { r: GAMMA8[255], g: GAMMA8[255], b: GAMMA8[0] };
-	pub const C_YELLOW_GREEN: Color = Color { r: GAMMA8[127], g: GAMMA8[255], b: GAMMA8[0] };
-	pub const C_GREEN: Color = Color { r: GAMMA8[0], g: GAMMA8[255], b: GAMMA8[0] };
-	pub const C_GREEN_BLUE: Color = Color { r: GAMMA8[0], g: GAMMA8[255], b: GAMMA8[127] };
-	pub const C_SKY_BLUE: Color = Color { r: GAMMA8[0], g: GAMMA8[255], b: GAMMA8[255] };
-	pub const C_DEEP_BLUE: Color = Color { r: GAMMA8[0], g: GAMMA8[127], b: GAMMA8[255] };
-	pub const C_BLUE: Color = Color { r: GAMMA8[0], g: GAMMA8[0], b: GAMMA8[255] };
-	pub const C_BLUE_PURPLE: Color = Color { r: GAMMA8[127], g: GAMMA8[0], b: GAMMA8[255] };
-	pub const C_PURPLE: Color = Color { r: GAMMA8[255], g: GAMMA8[0], b: GAMMA8[255] };
-	pub const C_DARK_PURPLE: Color = Color { r: GAMMA8[255], g: GAMMA8[0], b: GAMMA8[127] };
-	pub const C_WHITE: Color = Color { r: GAMMA8[255], g: GAMMA8[255], b: GAMMA8[127] };
-	pub const C_OFF: Color = Color { r: GAMMA8[0], g: GAMMA8[0], b: GAMMA8[0] };
-	pub const C_T_3000K: Color = Color { r: GAMMA8[255], g: GAMMA8[180], b: GAMMA8[107] };
-	pub const C_T_3500K: Color = Color { r: GAMMA8[255], g: GAMMA8[196], b: GAMMA8[137] };
-	pub const C_T_4000K: Color = Color { r: GAMMA8[255], g: GAMMA8[209], b: GAMMA8[163] };
-	pub const C_T_5000K: Color = Color { r: GAMMA8[255], g: GAMMA8[228], b: GAMMA8[206] };
+	pub const C_RED: Color = Color { r: 255, g: 0, b: 0 };
+	pub const C_ORANGE: Color = Color { r: 255, g: 127, b: 0 };
+	pub const C_YELLOW: Color = Color { r: 255, g: 255, b: 0 };
+	pub const C_YELLOW_GREEN: Color = Color { r: 127, g: 255, b: 0 };
+	pub const C_GREEN: Color = Color { r: 0, g: 255, b: 0 };
+	pub const C_GREEN_BLUE: Color = Color { r: 0, g: 255, b: 127 };
+	pub const C_SKY_BLUE: Color = Color { r: 0, g: 255, b: 255 };
+	pub const C_DEEP_BLUE: Color = Color { r: 0, g: 127, b: 255 };
+	pub const C_BLUE: Color = Color { r: 0, g: 0, b: GAMMA8[255] };
+	pub const C_BLUE_PURPLE: Color = Color { r: 127, g: 0, b: 255 };
+	pub const C_PURPLE: Color = Color { r: 255, g: 0, b: 255 };
+	pub const C_DARK_PURPLE: Color = Color { r: 255, g: 0, b: 127 };
+	pub const C_WHITE: Color = Color { r: 255, g: 255, b: 127 };
+	pub const C_OFF: Color = Color { r: 0, g: 0, b: GAMMA8[0] };
+	pub const C_T_3000K: Color = Color { r: 255, g: 180, b: 107 };
+	pub const C_T_3500K: Color = Color { r: 255, g: 196, b: 137 };
+	pub const C_T_4000K: Color = Color { r: 255, g: 209, b: 163 };
+	pub const C_T_5000K: Color = Color { r: 255, g: 228, b: 206 };
+
+	//if you change this, you need to modify all the rainbows below to match the new size
+	pub const MAX_COLORS_IN_RAINBOW: usize = 10;
 
 	//generic rainbows:
 	pub const R_OFF: Rainbow = Rainbow {

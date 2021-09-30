@@ -1,11 +1,12 @@
 pub mod pins {
+	#[allow(unused_imports)]
+	use esp32_hal::gpio::{OutputPin, PushPull, Output};
+
 	//hardware specific config for tim's office.
 	//make sure to add the pins you're using here and in main.rs:
 	pub const CLOSET_STRIP_PIN: u8 = 33;
 	pub const WINDOW_STRIP_PIN: u8 = 13;
 	pub const DOOR_STRIP_PIN: u8 = 25;
-
-	use esp32_hal::gpio::{OutputPin, PushPull, Output};
 
 	//struct to hold the actual pins.
 	//all pins must be of type OutputPin with a Push trait. The push trait allows
